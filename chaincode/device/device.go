@@ -46,7 +46,7 @@ func (t *DeviceContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 	return shim.Error("Invalid function name. Expecting [create, delete, get] funcations")
 }
 
-func (t *DeviceContract) create(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (t *DeviceContract) Create(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: create device with args %s\n", args)
 
 	if len(args) != 4 {
@@ -73,7 +73,7 @@ func (t *DeviceContract) create(stub shim.ChaincodeStubInterface, args []string)
 	return shim.Success(nil)
 }
 
-func (t *DeviceContract) get(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (t *DeviceContract) Get(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: get device with args: %s\n", args)
 
 	if len(args) != 1 {
@@ -91,7 +91,25 @@ func (t *DeviceContract) get(stub shim.ChaincodeStubInterface, args []string) pe
 	return shim.Success(Avalbytes)
 }
 
-func (t *DeviceContract) delete(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (t *DeviceContract) Search(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: get device with args: %s\n", args)
+
+	if len(args) != 1 {
+		return shim.Error("Invalid args to get device. expecting device id")
+	}
+
+	// get device from ledger
+	id := args[0]
+	Avalbytes, err := stub.GetState(id)
+
+	if err != nil {
+		return shim.Error("Failed to get device: " + err.Error())
+	}
+
+	return shim.Success(Avalbytes)
+}
+
+func (t *DeviceContract) Delete(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: delete device with args: %s\n", args)
 
 	if len(args) != 1 {
