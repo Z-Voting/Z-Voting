@@ -6,10 +6,10 @@ Just run the following commands from the project root directory:
 
 **Start up network:** `docker-compose up -d`
 
-**Build and run code:**
+**Build and run code:** Here, we have to set the Chaincode Name first (the CC_N variable).
 
 `
-docker exec -it chaincode bash -c "cd rahasak && go build -o rahasak && CORE_PEER_ADDRESS=peer:7052 CORE_CHAINCODE_ID_NAME=rahasak:1 ./rahasak"
+export CC_N=rahasak && docker exec -e -it chaincode bash -c "cd $CC_N && go build -o $CC_N && CORE_PEER_ADDRESS=peer:7052 CORE_CHAINCODE_ID_NAME=$CC_N:1 ./$CC_N"
 `
 
 
