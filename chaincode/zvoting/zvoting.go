@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var N int64 = 1000000007
+
 type ZVotingContract struct {
 }
 
@@ -52,6 +54,21 @@ type LoginChallenge struct {
 	A1 int64
 	A2 int64
 	A3 int64
+	N int64
+}
+
+type Vote struct {
+	voter Voter
+	values []int64
+}
+
+func Atoi64(numStr string) int64{
+	num, err := strconv.ParseInt(numStr, 10, 64)
+	if err != nil {
+		_ =fmt.Errorf("%v", err.Error())
+		return 0
+	}
+	return num
 }
 
 func (election *Election) isRunning() bool {
@@ -91,8 +108,8 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.Search(stub, args)
 	} else if function == "getRandom" {
 		return s.getRandom(stub, args)
-	} else if function == "createId" {
-		return s.createId(stub, args)
+	} else if function == "generateUID" {
+		return s.generateUID(stub, args)
 	} else if function == "createElection" {
 		return s.createElection(stub, args)
 	} else if function == "addCandidate" {
@@ -109,9 +126,69 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.registerVoter(stub, args)
 	} else if function == "getLoginChallenge" {
 		return s.getLoginChallenge(stub, args)
+	} else if function == "voterLogin" {
+		return s.voterLogin(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+func mod_power(base int64, power int64, n int64) int64 {
+	if power==0 {
+		return 1%n
+	}
+	if power==1 {
+		return base%n
+	}
+	if power%2==1 {
+		return ((base%n)*mod_power(base, power-1, n))%n
+	}
+	sqroot := mod_power(base, power/2, n)
+	return (sqroot*sqroot)%n
+}
+
+func (s *ZVotingContract) voterLogin(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: Voter Login")
+	email := args[0]
+	x := Atoi64(args[1])
+
+	a1 := Atoi64(args[2])
+	a2 := Atoi64(args[3])
+	a3 := Atoi64(args[4])
+
+	v1 := Atoi64(args[5])
+	v2 := Atoi64(args[6])
+	v3 := Atoi64(args[7])
+
+	y1 := Atoi64(args[8]) % N
+
+	y := x
+	y %= N
+	y *= mod_power(v1, a1, N)
+	y %= N
+	y *= mod_power(v2, a2, N)
+	y %= N
+	y *= mod_power(v3, a3, N)
+	y %= N
+
+	y1 *= y1
+	y1 %= N
+
+	if(y != y1) {
+		return shim.Error( fmt.Sprintf("Login Failed, y=%v, y1=%v", y, y1) )
+	}
+
+	data, err := stub.GetState(email)
+	if data == nil {
+		return shim.Error("Could not get record with id: " + args[0])
+	}
+	if err != nil {
+		return shim.Error("Error constract response: " + err.Error())
+	}
+
+	fmt.Printf("INFO: search response:%s\n", string(data))
+
+	return shim.Success(data)
 }
 
 func (s *ZVotingContract) getLoginChallenge(stub shim.ChaincodeStubInterface, args []string) peer.Response {
@@ -121,7 +198,10 @@ func (s *ZVotingContract) getLoginChallenge(stub shim.ChaincodeStubInterface, ar
 		A1: rand.Int63(),
 		A2: rand.Int63(),
 		A3: rand.Int63(),
+		N:  N,
 	}
+
+
 
 	challengeJSON, _ := json.Marshal(loginChallenge)
 
@@ -131,7 +211,11 @@ func (s *ZVotingContract) getLoginChallenge(stub shim.ChaincodeStubInterface, ar
 func (s *ZVotingContract) registerVoter(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: Register Voter with args: %s\n", args)
 
-	key := generateUID(20, stub, args)
+	key := args[1]
+
+	if !isUniqueKey(key, stub, args) {
+		return shim.Error("User with this email already exists")
+	}
 
 	voter := Voter{
 		Id:         key,
@@ -175,22 +259,25 @@ func randomString(l int) string {
 	return string(b)
 }
 
+func isUniqueKey(key string, stub shim.ChaincodeStubInterface, args []string) bool {
+	value, err := stub.GetState(key)
+	if err != nil {
+		panic(err)
+	}
+	return value == nil
+}
+
 func generateUID(l int, stub shim.ChaincodeStubInterface, args []string) string {
 	rand.Seed(time.Now().UnixNano())
 	randStr := randomString(l)
 
-	value, err := stub.GetState(randStr)
-	if err != nil {
-		return fmt.Sprintf("Failed to get asset: %s with error: %s", args[0], err)
-	}
-	for value != nil {
+	for !isUniqueKey(randStr, stub, args) {
 		randStr = randomString(l)
-		value, err = stub.GetState(randStr)
 	}
 	return randStr
 }
 
-func (s *ZVotingContract) createId(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (s *ZVotingContract) generateUID(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	randStr := generateUID(20, stub, args)
 
 	return shim.Success([]byte(randStr))
@@ -296,14 +383,19 @@ func (s *ZVotingContract) getCandidates(stub shim.ChaincodeStubInterface, args [
 	return shim.Success(buffer.Bytes())
 }
 
+func getRecord(stub shim.ChaincodeStubInterface, key string, obj interface{}) error {
+	data, err := stub.GetState(key)
+	err = json.Unmarshal(data, obj)
+	return err
+}
+
 func (s *ZVotingContract) startElection(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: start election with args: %s\n", args)
 
 	key := args[0]
 
-	data, _ := stub.GetState(args[0])
 	var election Election
-	err := json.Unmarshal(data, &election)
+	err := getRecord(stub, key, &election)
 
 	if !election.isFresh() {
 		return shim.Error("This isn't a Fresh Election")
