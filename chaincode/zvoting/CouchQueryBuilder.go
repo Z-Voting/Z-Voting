@@ -3,15 +3,15 @@ package main
 import "fmt"
 
 type CouchQueryBuilder struct {
-	start string
+	start         string
 	selectorStart string
-	selectorBody string
-	selectorEnd string
-	end string
+	selectorBody  string
+	selectorEnd   string
+	end           string
 }
 
 func newCouchQueryBuilder() *CouchQueryBuilder {
-	return &CouchQueryBuilder{start:"{", selectorStart:"\"selector\":{", selectorBody:"", selectorEnd:"}", end:"}"}
+	return &CouchQueryBuilder{start: "{", selectorStart: "\"selector\":{", selectorBody: "", selectorEnd: "}", end: "}"}
 }
 
 func (q *CouchQueryBuilder) addSelector(key string, value interface{}) *CouchQueryBuilder {

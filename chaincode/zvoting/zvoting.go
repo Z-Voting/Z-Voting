@@ -15,26 +15,38 @@ type ZVotingContract struct {
 }
 
 type User struct {
-	Id string `json:"id"`
+	Id    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
 type Election struct {
-	Id string
-	Name string
+	Id        string
+	Name      string
 	StartTime string
-	EndTime string
-	Doctype string
+	Duration  string
+	Doctype   string
 }
 
 type Candidate struct {
-	Id string
-	Name string
-	Sign string
+	Id         string
+	Name       string
+	Sign       string
 	ImgAddress string
 	ElectionId string
-	Doctype string
+	Doctype    string
+}
+
+func (election *Election) isRunning() bool {
+	currentTime := time.Now().Unix()
+	startTime, _ := strconv.ParseInt(election.StartTime, 10, 64)
+	duration, _ := strconv.ParseInt(election.Duration, 10, 64)
+	endTime := startTime + duration
+	return currentTime >= startTime && currentTime <= endTime
+}
+
+func (election *Election) isFresh() bool {
+	return election.StartTime == "0"
 }
 
 func (s *ZVotingContract) Init(stub shim.ChaincodeStubInterface) peer.Response {
@@ -64,11 +76,13 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 	} else if function == "addCandidate" {
 		return s.addCandidate(stub, args)
 	} else if function == "delete" {
-		return s.delete(stub, args);
+		return s.delete(stub, args)
 	} else if function == "getElections" {
 		return s.getElections(stub, args)
 	} else if function == "getCandidates" {
 		return s.getCandidates(stub, args)
+	} else if function == "startElection" {
+		return s.startElection(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
@@ -76,8 +90,8 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 
 func (s *ZVotingContract) getRandom(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	seed, _ := strconv.Atoi(args[0])
-	rand.Seed( int64(seed) )
-	return shim.Success( []byte(strconv.Itoa(rand.Int()))  )
+	rand.Seed(int64(seed))
+	return shim.Success([]byte(strconv.Itoa(rand.Int())))
 }
 
 // Returns an int >= min, < max
@@ -109,7 +123,7 @@ func (s *ZVotingContract) createId(stub shim.ChaincodeStubInterface, args []stri
 		value, err = stub.GetState(randStr)
 	}
 
-	return shim.Success( []byte(randStr) )
+	return shim.Success([]byte(randStr))
 }
 
 func (s *ZVotingContract) createElection(stub shim.ChaincodeStubInterface, args []string) peer.Response {
@@ -120,8 +134,8 @@ func (s *ZVotingContract) createElection(stub shim.ChaincodeStubInterface, args 
 	election := Election{
 		Id:        key,
 		Name:      args[1],
-		StartTime: args[2],
-		EndTime:   args[3],
+		StartTime: "0",
+		Duration:  args[2],
 		Doctype:   "Election",
 	}
 
@@ -210,6 +224,31 @@ func (s *ZVotingContract) getCandidates(stub shim.ChaincodeStubInterface, args [
 	fmt.Printf("INFO: search response:%s\n", buffer.String())
 
 	return shim.Success(buffer.Bytes())
+}
+
+func (s *ZVotingContract) startElection(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: start election with args: %s\n", args)
+
+	key := args[0]
+
+	data, _ := stub.GetState(args[0])
+	var election Election
+	err := json.Unmarshal(data, &election)
+
+	if !election.isFresh() {
+		return shim.Error("This isn't a Fresh Election")
+	}
+
+	election.StartTime = strconv.Itoa(int(time.Now().Unix()))
+
+	electionJSON, _ := json.Marshal(election)
+	err = stub.PutState(key, electionJSON)
+	if err != nil {
+		fmt.Printf("ERROR: error PutState: %s\n", err.Error())
+		shim.Error("error PutState: " + err.Error())
+	}
+
+	return shim.Success(nil)
 }
 
 func (s *ZVotingContract) Create(stub shim.ChaincodeStubInterface, args []string) peer.Response {
