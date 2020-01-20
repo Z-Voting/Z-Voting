@@ -61,10 +61,14 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.createId(stub, args)
 	} else if function == "createElection" {
 		return s.createElection(stub, args)
-	} else if function == "createCandidate" {
-		return s.createCandidate(stub, args)
+	} else if function == "addCandidate" {
+		return s.addCandidate(stub, args)
 	} else if function == "delete" {
 		return s.delete(stub, args);
+	} else if function == "getElections" {
+		return s.getElections(stub, args)
+	} else if function == "getCandidates" {
+		return s.getCandidates(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
@@ -131,7 +135,7 @@ func (s *ZVotingContract) createElection(stub shim.ChaincodeStubInterface, args 
 	return shim.Success(nil)
 }
 
-func (s *ZVotingContract) createCandidate(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (s *ZVotingContract) addCandidate(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: create election with args: %s\n", args)
 
 	key := args[0]
@@ -169,10 +173,32 @@ func (s *ZVotingContract) delete(stub shim.ChaincodeStubInterface, args []string
 func (s *ZVotingContract) getElections(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: Get Elections")
 
+	queryString := newCouchQueryBuilder().addSelector("Doctype", "Election").getQueryString()
 
-	iterator, err := stub.GetStateByRange(frm, to)
+	iterator, err := stub.GetQueryResult(queryString)
 	if err != nil {
-		return shim.Error("Error search by range: " + err.Error())
+		return shim.Error("Error getting elections: " + err.Error())
+	}
+	defer iterator.Close()
+
+	// build json respone
+	buffer, err := buildResponse(iterator)
+	if err != nil {
+		return shim.Error("Error constract response: " + err.Error())
+	}
+	fmt.Printf("INFO: search response:%s\n", buffer.String())
+
+	return shim.Success(buffer.Bytes())
+}
+
+func (s *ZVotingContract) getCandidates(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: Get Candidates")
+
+	queryString := newCouchQueryBuilder().addSelector("Doctype", "Candidate").addSelector("ElectionId", args[0]).getQueryString()
+
+	iterator, err := stub.GetQueryResult(queryString)
+	if err != nil {
+		return shim.Error("Error getting elections: " + err.Error())
 	}
 	defer iterator.Close()
 
