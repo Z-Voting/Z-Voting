@@ -48,6 +48,12 @@ type Candidate struct {
 	Doctype    string
 }
 
+type LoginChallenge struct {
+	A1 int64
+	A2 int64
+	A3 int64
+}
+
 func (election *Election) isRunning() bool {
 	currentTime := time.Now().Unix()
 	startTime, _ := strconv.ParseInt(election.StartTime, 10, 64)
@@ -101,9 +107,25 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.startElection(stub, args)
 	} else if function == "registerVoter" {
 		return s.registerVoter(stub, args)
+	} else if function == "getLoginChallenge" {
+		return s.getLoginChallenge(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+func (s *ZVotingContract) getLoginChallenge(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: get login challenge with args: %s\n", args)
+
+	loginChallenge := LoginChallenge{
+		A1: rand.Int63(),
+		A2: rand.Int63(),
+		A3: rand.Int63(),
+	}
+
+	challengeJSON, _ := json.Marshal(loginChallenge)
+
+	return shim.Success(challengeJSON)
 }
 
 func (s *ZVotingContract) registerVoter(stub shim.ChaincodeStubInterface, args []string) peer.Response {
