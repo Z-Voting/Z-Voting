@@ -6,6 +6,9 @@ set -e
 # This script expedites the chaincode development process by automating the
 # requisite channel create/join commands
 
+sleep 15
+echo "TKD Rocks"
+
 # We use a pre-generated orderer.block and channel transaction artifact (myc.tx),
 # both of which are created using the configtxgen tool
 
