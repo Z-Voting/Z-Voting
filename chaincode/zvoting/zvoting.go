@@ -212,6 +212,7 @@ func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args
 	}
 
 	finalResultData, _ := json.Marshal(finalResult)
+	_ = stub.PutState(finalResult.id, finalResultData)
 
 	return shim.Success(finalResultData)
 }

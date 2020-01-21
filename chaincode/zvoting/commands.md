@@ -49,3 +49,7 @@ peer chaincode query -n zvoting -c '{"Args":["voterLogin", "tkd@gmail.com", "4",
 ```bash
 peer chaincode invoke -n zvoting -c '{"Args":["castVote", "tkd@gmail.com", "1", "0", "A0cbCJirveAoJCln7sQB"]}' -C myc
 ```
+# Calculate Result
+```bash
+peer chaincode query -n zvoting -c '{"Args":["calculateResult", "A0cbCJirveAoJCln7sQB"]}' -C myc
+```
