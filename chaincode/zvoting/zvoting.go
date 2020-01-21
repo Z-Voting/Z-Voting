@@ -139,9 +139,81 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.voterLogin(stub, args)
 	} else if function == "castVote" {
 		return s.castVote(stub, args)
+	} else if function == "calculateResult" {
+		return s.calculateResult(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+type ElectionResult struct {
+	id          string
+	PublisherId string
+	Values      []int64
+	ElectionId  string
+	Doctype     string
+}
+
+func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	electionId := args[0]
+
+	var election Election
+	_ = getRecord(stub, electionId, &election)
+
+	fmt.Println(election)
+
+	if !election.isOver() {
+		return shim.Error("You cannot calculate Result until the election is over. Please have patience.")
+	}
+
+
+
+	queryString := newCouchQueryBuilder().addSelector("Doctype", "Vote").addSelector("ElectionId", electionId).getQueryString()
+
+	fmt.Println(queryString)
+
+	iterator, _ := stub.GetQueryResult(queryString)
+	counter := 0
+
+	it2:=iterator
+	for it2.HasNext() {
+		counter++
+		_,_=it2.Next()
+	}
+
+	iterator, _ = stub.GetQueryResult(queryString)
+
+	allVotes := make([]Vote, counter)
+	index := 0
+	for iterator.HasNext() {
+		resp, _ := iterator.Next()
+		valBytes := resp.Value
+		_ = json.Unmarshal(valBytes, &allVotes[index])
+		index++
+	}
+
+	candidateNumber := s.totalCandidates(electionId, stub)
+
+	result := make([]int64, candidateNumber)
+	for _, vote := range allVotes {
+		values := vote.Values
+		for i, val := range values{
+			result[i] += val
+			result[i] %= N
+		}
+	}
+
+	var finalResult ElectionResult=  ElectionResult{
+		id:         electionId+"Result",
+		PublisherId:    "ECE",
+		Values:     result,
+		ElectionId: electionId,
+		Doctype:    "ElectionResult",
+	}
+
+	finalResultData, _ := json.Marshal(finalResult)
+
+	return shim.Success(finalResultData)
 }
 
 func (s *ZVotingContract) totalCandidates(electionID string, stub shim.ChaincodeStubInterface) int64 {
@@ -195,6 +267,8 @@ func (s *ZVotingContract) castVote(stub shim.ChaincodeStubInterface, args []stri
 
 	return shim.Success(nil)
 }
+
+
 
 func mod_power(base int64, power int64, n int64) int64 {
 	if power==0 {
