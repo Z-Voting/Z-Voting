@@ -41,6 +41,12 @@ type Voter struct {
 	Doctype string
 }
 
+func (voter Voter) hasVoted(stub shim.ChaincodeStubInterface) bool {
+	queryString := newCouchQueryBuilder().addSelector("Doctype", "Vote").addSelector("VoterId", voter.Id).getQueryString()
+	iterator, _ := stub.GetQueryResult(queryString)
+	return iterator.HasNext()
+}
+
 type Candidate struct {
 	Id         string
 	Name       string
@@ -58,8 +64,11 @@ type LoginChallenge struct {
 }
 
 type Vote struct {
-	voter Voter
-	values []int64
+	id         string
+	VoterId    string
+	Values     []int64
+	ElectionId string
+	Doctype    string
 }
 
 func Atoi64(numStr string) int64{
@@ -128,9 +137,63 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.getLoginChallenge(stub, args)
 	} else if function == "voterLogin" {
 		return s.voterLogin(stub, args)
+	} else if function == "castVote" {
+		return s.castVote(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+func (s *ZVotingContract) totalCandidates(electionID string, stub shim.ChaincodeStubInterface) int64 {
+	queryString := newCouchQueryBuilder().addSelector("Doctype", "Candidate").addSelector("ElectionId", electionID).getQueryString()
+
+	iterator, _ := stub.GetQueryResult(queryString)
+	counter := 0
+
+	for iterator.HasNext() {
+		counter++
+		resp, _ := iterator.Next()
+		fmt.Println(string(resp.Value))
+	}
+	return int64(counter)
+}
+
+func (s *ZVotingContract) castVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: Cast vote with args: %s\n", args)
+
+	key := generateUID(20, stub, args)
+
+	voterId := args[0]
+	var voter Voter
+	_ = getRecord(stub, voterId, &voter)
+
+	if voter.hasVoted(stub) {
+		return shim.Error("You have already Voted")
+	}
+
+	candidatesCount := s.totalCandidates(voter.ElectionId, stub)
+	values := make([]int64, candidatesCount)
+	for i :=0; int64(i)<candidatesCount; i++ {
+		values[i] = Atoi64(args[i+1]) //because args[0] is taken by voterID
+	}
+
+	vote := Vote{
+		id:         key,
+		VoterId:    voterId,
+		Values:     values,
+		ElectionId: voter.ElectionId,
+		Doctype:    "Vote",
+	}
+
+
+	voteJSON, _ := json.Marshal(vote)
+	err := stub.PutState(key, voteJSON)
+	if err != nil {
+		fmt.Printf("ERROR: error PutState: %s\n", err.Error())
+		shim.Error("error PutState: " + err.Error())
+	}
+
+	return shim.Success(nil)
 }
 
 func mod_power(base int64, power int64, n int64) int64 {
@@ -226,6 +289,12 @@ func (s *ZVotingContract) registerVoter(stub shim.ChaincodeStubInterface, args [
 		V3:         args[4],
 		ElectionId: args[5],
 		Doctype:    "Voter",
+	}
+
+	var election Election
+	_ = getRecord(stub, voter.ElectionId, &election)
+	if !election.isFresh() {
+		return shim.Error("Cannot register voter in a running or finished election")
 	}
 
 	voterJSON, _ := json.Marshal(voter)
