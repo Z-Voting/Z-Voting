@@ -141,9 +141,16 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 		return s.castVote(stub, args)
 	} else if function == "calculateResult" {
 		return s.calculateResult(stub, args)
+	} else if function == "getDateTime" {
+		return s.getDateTime(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+func (s *ZVotingContract) getDateTime(shim.ChaincodeStubInterface, []string) peer.Response {
+	dt := time.Now()
+	return shim.Success([]byte("Current date and time is: " + dt.String()))
 }
 
 type ElectionResult struct {
