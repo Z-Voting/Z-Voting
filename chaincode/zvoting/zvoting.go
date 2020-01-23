@@ -23,52 +23,60 @@ type User struct {
 }
 
 type Election struct {
-	Id        string
-	Name      string
-	StartTime string
-	Duration  string
-	Doctype   string
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	StartTime string `json:"startTime"`
+	Duration  string `json:"duration"`
+	Doctype   string `json:"doctype"`
 }
 
 type Voter struct {
-	Id string
-	Name string
-	Email string
-	V1 string
-	V2 string
-	V3 string
-	ElectionId string
-	Doctype string
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	V1         string `json:"v1"`
+	V2         string `json:"v2"`
+	V3         string `json:"v3"`
+	ElectionID string `json:"electionID"`
+	Doctype    string `json:"doctype"`
 }
 
 func (voter Voter) hasVoted(stub shim.ChaincodeStubInterface) bool {
-	queryString := newCouchQueryBuilder().addSelector("Doctype", "Vote").addSelector("VoterId", voter.Id).getQueryString()
+	queryString := newCouchQueryBuilder().addSelector("doctype", "Vote").addSelector("VoterID", voter.ID).getQueryString()
 	iterator, _ := stub.GetQueryResult(queryString)
 	return iterator.HasNext()
 }
 
 type Candidate struct {
-	Id         string
-	Name       string
-	Sign       string
-	ImgAddress string
-	ElectionId string
-	Doctype    string
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Sign       string `json:"sign"`
+	ImgAddress string `json:"imgAddress"`
+	ElectionID string `json:"electionID"`
+	Doctype    string `json:"doctype"`
 }
 
 type LoginChallenge struct {
-	A1 int64
-	A2 int64
-	A3 int64
-	N int64
+	A1 int64 `json:"a1"`
+	A2 int64 `json:"a2"`
+	A3 int64 `json:"a3"`
+	N int64 `json:"n"`
 }
 
 type Vote struct {
-	id         string
-	VoterId    string
-	Values     []int64
-	ElectionId string
-	Doctype    string
+	ID         string `json:"id"`
+	VoterID    string `json:"voterID"`
+	Values     string `json:"values"`
+	ElectionID string `json:"electionID"`
+	Doctype    string `json:"doctype"`
+}
+
+type ElectionResult struct {
+	ID          string  `json:"id"`
+	PublisherID string  `json:"publisherID"`
+	Values      []int64 `json:"values"`
+	ElectionID  string  `json:"electionID"`
+	Doctype     string  `json:"doctype"`
 }
 
 func Atoi64(numStr string) int64{
@@ -138,14 +146,31 @@ func (s *ZVotingContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response
 	} else if function == "voterLogin" {
 		return s.voterLogin(stub, args)
 	} else if function == "castVote" {
-		return s.castVote(stub, args)
+		return s.castVote2(stub, args)
 	} else if function == "calculateResult" {
 		return s.calculateResult(stub, args)
 	} else if function == "getDateTime" {
 		return s.getDateTime(stub, args)
+	} else if function == "initLedger" {
+		return s.initLedger(stub, args)
 	}
 
 	return shim.Error("Invalid smart contract function")
+}
+
+func (s *ZVotingContract) initLedger(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	var finalResult ElectionResult=  ElectionResult{
+		ID:          "Start Network",
+		PublisherID: "ECE",
+		Values:      nil,
+		ElectionID:  "",
+		Doctype:     "Genesis",
+	}
+
+	finalResultData, _ := json.Marshal(finalResult)
+	_ = stub.PutState(finalResult.ID, finalResultData)
+
+	return shim.Success([]byte("done some shit"))
 }
 
 func (s *ZVotingContract) getDateTime(shim.ChaincodeStubInterface, []string) peer.Response {
@@ -153,19 +178,11 @@ func (s *ZVotingContract) getDateTime(shim.ChaincodeStubInterface, []string) pee
 	return shim.Success([]byte("Current date and time is: " + dt.String()))
 }
 
-type ElectionResult struct {
-	id          string
-	PublisherId string
-	Values      []int64
-	ElectionId  string
-	Doctype     string
-}
-
 func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-	electionId := args[0]
+	electionID := args[0]
 
 	var election Election
-	_ = getRecord(stub, electionId, &election)
+	_ = getRecord(stub, electionID, &election)
 
 	fmt.Println(election)
 
@@ -175,7 +192,7 @@ func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args
 
 
 
-	queryString := newCouchQueryBuilder().addSelector("Doctype", "Vote").addSelector("ElectionId", electionId).getQueryString()
+	queryString := newCouchQueryBuilder().addSelector("doctype", "Vote").addSelector("electionID", electionID).getQueryString()
 
 	fmt.Println(queryString)
 
@@ -199,11 +216,18 @@ func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args
 		index++
 	}
 
-	candidateNumber := s.totalCandidates(electionId, stub)
+	candidateNumber := s.totalCandidates(electionID, stub)
 
 	result := make([]int64, candidateNumber)
 	for _, vote := range allVotes {
-		values := vote.Values
+		valuesStr := vote.Values
+		var values []int64
+		err := json.Unmarshal([]byte(valuesStr), &values)
+
+		if err != nil {
+			return shim.Error("Unmarshal of values failed")
+		}
+
 		for i, val := range values{
 			result[i] += val
 			result[i] %= N
@@ -211,21 +235,21 @@ func (s *ZVotingContract) calculateResult(stub shim.ChaincodeStubInterface, args
 	}
 
 	var finalResult ElectionResult=  ElectionResult{
-		id:         electionId+"Result",
-		PublisherId:    "ECE",
-		Values:     result,
-		ElectionId: electionId,
-		Doctype:    "ElectionResult",
+		ID:          electionID +"Result",
+		PublisherID: "ECE",
+		Values:      result,
+		ElectionID:  electionID,
+		Doctype:     "ElectionResult",
 	}
 
 	finalResultData, _ := json.Marshal(finalResult)
-	_ = stub.PutState(finalResult.id, finalResultData)
+	//_ = stub.PutState(finalResult.ID, finalResultData)
 
 	return shim.Success(finalResultData)
 }
 
 func (s *ZVotingContract) totalCandidates(electionID string, stub shim.ChaincodeStubInterface) int64 {
-	queryString := newCouchQueryBuilder().addSelector("Doctype", "Candidate").addSelector("ElectionId", electionID).getQueryString()
+	queryString := newCouchQueryBuilder().addSelector("doctype", "Candidate").addSelector("electionID", electionID).getQueryString()
 
 	iterator, _ := stub.GetQueryResult(queryString)
 	counter := 0
@@ -238,42 +262,81 @@ func (s *ZVotingContract) totalCandidates(electionID string, stub shim.Chaincode
 	return int64(counter)
 }
 
+func (s *ZVotingContract) castVote2(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	fmt.Printf("INFO: Cast vote with args: %s\n", args)
+
+	key := args[0] + "vote"
+	voterID := args[0]
+	var voter Voter
+	err := getRecord(stub, voterID, &voter)
+	if err!=nil {
+		return shim.Error("This is the fucking error")
+	}
+	content := args[1]
+
+	var vote Vote = Vote{
+		ID:         key,
+		VoterID:    voterID,
+		Values:     content,
+		ElectionID: voter.ElectionID,
+		Doctype:    "Vote",
+	}
+	voteJSON, err := json.Marshal(vote)
+
+	err = stub.PutState(key, voteJSON)
+	if err!=nil {
+		return shim.Error( "Ghapla: " + err.Error())
+	}
+
+	return shim.Success(voteJSON)
+}
+
 func (s *ZVotingContract) castVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: Cast vote with args: %s\n", args)
 
 	key := generateUID(20, stub, args)
 
-	voterId := args[0]
+	voterID := args[0]
 	var voter Voter
-	_ = getRecord(stub, voterId, &voter)
+	_ = getRecord(stub, voterID, &voter)
 
 	if voter.hasVoted(stub) {
 		return shim.Error("You have already Voted")
 	}
 
-	candidatesCount := s.totalCandidates(voter.ElectionId, stub)
-	values := make([]int64, candidatesCount)
-	for i :=0; int64(i)<candidatesCount; i++ {
-		values[i] = Atoi64(args[i+1]) //because args[0] is taken by voterID
+	//candidatesCount := s.totalCandidates(voter.ElectionID, stub)
+	var values []int64
+
+	voteContentJSON := args[1]
+	err := json.Unmarshal([]byte(voteContentJSON), &values)
+
+	if err!=nil {
+		return shim.Error(err.Error())
 	}
 
+
+	//for i :=0; int64(i)<candidatesCount; i++ {
+	//	values[i] = Atoi64(args[i+1]) //because args[0] is taken by voterID
+	//}
+
 	vote := Vote{
-		id:         key,
-		VoterId:    voterId,
-		Values:     values,
-		ElectionId: voter.ElectionId,
+		ID:         key,
+		VoterID:    voterID,
+		Values:     args[1],
+		ElectionID: voter.ElectionID,
 		Doctype:    "Vote",
+
 	}
 
 
 	voteJSON, _ := json.Marshal(vote)
-	err := stub.PutState(key, voteJSON)
-	if err != nil {
-		fmt.Printf("ERROR: error PutState: %s\n", err.Error())
-		shim.Error("error PutState: " + err.Error())
-	}
+	//err = stub.PutState(key, voteJSON)
+	//if err != nil {
+	//	fmt.Printf("ERROR: error PutState: %s\n", err.Error())
+	//	shim.Error("error PutState: " + err.Error())
+	//}
 
-	return shim.Success(nil)
+	return shim.Success(voteJSON)
 }
 
 
@@ -325,7 +388,7 @@ func (s *ZVotingContract) voterLogin(stub shim.ChaincodeStubInterface, args []st
 
 	data, err := stub.GetState(email)
 	if data == nil {
-		return shim.Error("Could not get record with id: " + args[0])
+		return shim.Error("Could not get record with ID: " + args[0])
 	}
 	if err != nil {
 		return shim.Error("Error constract response: " + err.Error())
@@ -363,18 +426,18 @@ func (s *ZVotingContract) registerVoter(stub shim.ChaincodeStubInterface, args [
 	}
 
 	voter := Voter{
-		Id:         key,
+		ID:         key,
 		Name:       args[0],
 		Email:      args[1],
 		V1:         args[2],
 		V2:         args[3],
 		V3:         args[4],
-		ElectionId: args[5],
+		ElectionID: args[5],
 		Doctype:    "Voter",
 	}
 
 	var election Election
-	_ = getRecord(stub, voter.ElectionId, &election)
+	_ = getRecord(stub, voter.ElectionID, &election)
 	if !election.isFresh() {
 		return shim.Error("Cannot register voter in a running or finished election")
 	}
@@ -419,7 +482,7 @@ func isUniqueKey(key string, stub shim.ChaincodeStubInterface, args []string) bo
 }
 
 func generateUID(l int, stub shim.ChaincodeStubInterface, args []string) string {
-	rand.Seed(time.Now().UnixNano())
+	//rand.Seed(time.Now().UnixNano())
 	randStr := randomString(l)
 
 	for !isUniqueKey(randStr, stub, args) {
@@ -440,7 +503,7 @@ func (s *ZVotingContract) createElection(stub shim.ChaincodeStubInterface, args 
 	key := generateUID(20, stub, args)
 
 	election := Election{
-		Id:        key,
+		ID:        key,
 		Name:      args[0],
 		StartTime: "0",
 		Duration:  args[1],
@@ -463,11 +526,11 @@ func (s *ZVotingContract) addCandidate(stub shim.ChaincodeStubInterface, args []
 	key := generateUID(20, stub, args)
 
 	candidate := Candidate{
-		Id:         key,
+		ID:         key,
 		Name:       args[0],
 		Sign:       args[1],
 		ImgAddress: args[2],
-		ElectionId: args[3],
+		ElectionID: args[3],
 		Doctype:    "Candidate",
 	}
 	candidateJSON, _ := json.Marshal(candidate)
@@ -495,7 +558,7 @@ func (s *ZVotingContract) delete(stub shim.ChaincodeStubInterface, args []string
 func (s *ZVotingContract) getElections(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: Get Elections")
 
-	queryString := newCouchQueryBuilder().addSelector("Doctype", "Election").getQueryString()
+	queryString := newCouchQueryBuilder().addSelector("doctype", "Election").getQueryString()
 
 	iterator, err := stub.GetQueryResult(queryString)
 	if err != nil {
@@ -516,7 +579,7 @@ func (s *ZVotingContract) getElections(stub shim.ChaincodeStubInterface, args []
 func (s *ZVotingContract) getCandidates(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	fmt.Printf("INFO: Get Candidates")
 
-	queryString := newCouchQueryBuilder().addSelector("Doctype", "Candidate").addSelector("ElectionId", args[0]).getQueryString()
+	queryString := newCouchQueryBuilder().addSelector("doctype", "Candidate").addSelector("electionID", args[0]).getQueryString()
 
 	iterator, err := stub.GetQueryResult(queryString)
 	if err != nil {
@@ -588,7 +651,7 @@ func (s *ZVotingContract) Get(stub shim.ChaincodeStubInterface, args []string) p
 
 	data, _ := stub.GetState(args[0])
 	if data == nil {
-		return shim.Error("Could not get record with id: " + args[0])
+		return shim.Error("Could not get record with ID: " + args[0])
 	}
 
 	return shim.Success(data)
@@ -650,3 +713,4 @@ func main() {
 		fmt.Printf("ERROR: error creating rahasak contact: %s\n", err.Error())
 	}
 }
+
