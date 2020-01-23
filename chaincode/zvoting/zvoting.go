@@ -270,7 +270,7 @@ func (s *ZVotingContract) castVote2(stub shim.ChaincodeStubInterface, args []str
 	var voter Voter
 	err := getRecord(stub, voterID, &voter)
 	if err!=nil {
-		return shim.Error("This is the fucking error")
+		return shim.Error("This voter does not exist")
 	}
 	content := args[1]
 
