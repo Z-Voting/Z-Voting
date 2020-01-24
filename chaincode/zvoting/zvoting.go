@@ -713,4 +713,3 @@ func main() {
 		fmt.Printf("ERROR: error creating rahasak contact: %s\n", err.Error())
 	}
 }
-
